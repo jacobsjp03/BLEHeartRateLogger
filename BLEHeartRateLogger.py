@@ -3,14 +3,12 @@
 """
     BLEHeartRateLogger
     ~~~~~~~~~~~~~~~~~~~
-
     A tool to log your heart rate using a Bluetooth low-energy (BLE) heart rate
     monitor (HRM). The tool uses system commands (hcitool and gatttool) to
     connect to the BLE HRM and parses the output of the tools. Data is
     interpreted according to the Bluetooth specification for HRM and saved in a
     sqlite database for future processing. In case the connection with the BLE
     HRM is lost, connection is restablished.
-
     :copyright: (c) 2015 by fg1
     :license: BSD, see LICENSE for more details
 """
@@ -42,6 +40,7 @@ def parse_args():
     parser.add_argument("-H", metavar='HR_HANDLE', type=str, help="Gatttool handle used for HR notifications (default: none)")
     parser.add_argument("-v", action='store_true', help="Verbose output")
     parser.add_argument("-d", action='store_true', help="Enable debug of gatttool")
+    parser.add_argument("-csv", metavar='CSV', type=str, help="Output filename of the csv file (default: none)")
 
     confpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "BLEHeartRateLogger.conf")
     if os.path.exists(confpath):
@@ -172,7 +171,7 @@ def get_ble_hr_mac():
     return addr
 
 
-def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_handle=None, debug_gatttool=False):
+def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_handle=None, debug_gatttool=False, csv=None):
     """
     main routine to which orchestrates everything
     """
@@ -183,6 +182,14 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
         with sq:
             sq.execute("CREATE TABLE IF NOT EXISTS hrm (tstamp INTEGER, hr INTEGER, rr INTEGER)")
             sq.execute("CREATE TABLE IF NOT EXISTS sql (tstamp INTEGER, commit_time REAL, commit_every INTEGER)")
+
+    # CSV file setup
+    csv_file = None
+    if csv is not None:
+        try:
+            csv_file = open(csv,"a")
+        except:
+            log.error("Could not open csv file. Please verify access to the file path: " + csv)
 
     if addr is None:
         # In case no address has been provided, we scan to find any BLE devices
@@ -196,8 +203,8 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
     while retry:
 
         while 1:
-            log.info("Establishing connection to " + addr)
-            gt = pexpect.spawn(gatttool + " -b " + addr + " -t random --interactive")
+            log.info("Establishing connection to " + addr.decode("utf-8"))
+            gt = pexpect.spawn(gatttool + " -b " + addr.decode("utf-8") + " -t random --interactive")
             if debug_gatttool:
                 gt.logfile = sys.stdout
 
@@ -222,7 +229,7 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
         if not retry:
             break
 
-        log.info("Connected to " + addr)
+        log.info("Connected to " + addr.decode("utf-8"))
 
         if check_battery:
             gt.sendline("char-read-uuid 00002a19-0000-1000-8000-00805f9b34fb")
@@ -241,7 +248,7 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
 
             while 1:
                 try:
-                    gt.expect(r"handle: (0x[0-9a-f]+), uuid: ([0-9a-f]{8})", timeout=10)
+                    gt.expect(r"handle: (0x[0-9a-f]+), uuid: ([0-9a-f]{8})", timeout=60)  # Had to increase the timeout from 10 for Wahoo Tickr X
                 except pexpect.TIMEOUT:
                     break
                 handle = gt.match.group(1).decode()
@@ -274,7 +281,7 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
             except pexpect.TIMEOUT:
                 # If the timer expires, it means that we have lost the
                 # connection with the HR monitor
-                log.warn("Connection lost with " + addr + ". Reconnecting.")
+                log.warn("Connection lost with " + addr.decode("utf-8") + ". Reconnecting.")
                 if sqlfile is not None:
                     sq.commit()
                 gt.sendline("quit")
@@ -306,15 +313,26 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
 
             if sqlfile is None:
                 log.info("Heart rate: " + str(res["hr"]))
-                continue
+            else:
+                # Push the data to the database
+                insert_db(sq, res, period)
 
-            # Push the data to the database
-            insert_db(sq, res, period)
+            if csv is not None:
+                if csv_file is not None:
+                    if csv_file.closed == False:
+                        # Write to the csv file
+                        csv_file.write(time.strftime("%D %T", time.localtime()) + "," + str(res["hr"]) + "\n")
 
     if sqlfile is not None:
         # We close the database properly
         sq.commit()
         sq.close()
+
+    if csv is not None:
+        if csv_file is not None:
+            if csv_file.closed == False:
+                # Close the csv file
+                csv_file.close()
 
     # We quit close the BLE connection properly
     gt.sendline("quit")
@@ -340,7 +358,7 @@ def cli():
     else:
         log.setLevel(logging.INFO)
 
-    main(args.m, args.o, args.g, args.b, args.H, args.d)
+    main(args.m, args.o, args.g, args.b, args.H, args.d, args.csv)
 
 
 if __name__ == "__main__":
