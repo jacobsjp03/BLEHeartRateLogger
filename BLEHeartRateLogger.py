@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument("-H", metavar='HR_HANDLE', type=str, help="Gatttool handle used for HR notifications (default: none)")
     parser.add_argument("-v", action='store_true', help="Verbose output")
     parser.add_argument("-d", action='store_true', help="Enable debug of gatttool")
-    parser.add_argument("-csv", metavar='CSV', type=str, help="Output filename of the csv file (default: none)")
+    parser.add_argument("-csv", metavar='file.csv', type=str, help="Output filename of the csv file (default: none)")
 
     confpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "BLEHeartRateLogger.conf")
     if os.path.exists(confpath):
