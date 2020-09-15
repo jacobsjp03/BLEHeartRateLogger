@@ -12,3 +12,9 @@ Version 0.1.1
 Added CSV output.
 Output of address was throwing an error. Updated to convert to string before output to log.
 Increased timeout delay for the Wahoo Tickr X.
+
+
+Version 0.1.2
+-------------
+
+Added output for an LCD and input from a push-button. Tested on a Raspberry Pi 3.
