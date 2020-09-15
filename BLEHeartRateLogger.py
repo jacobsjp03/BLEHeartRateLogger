@@ -32,12 +32,6 @@ import configparser
 logging.basicConfig(format="%(asctime)-15s  %(message)s")
 log = logging.getLogger("BLEHeartRateLogger")
 
-
-
-
-
-
-
 def parse_args():
     """
     Command line argument parsing
