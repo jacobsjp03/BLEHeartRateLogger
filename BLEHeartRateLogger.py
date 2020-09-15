@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- encoding: utf-8 -*-
 """
     BLEHeartRateLogger
@@ -11,6 +11,11 @@
     HRM is lost, connection is restablished.
     :copyright: (c) 2015 by fg1
     :license: BSD, see LICENSE for more details
+
+    Added CSV output
+    Added LCD output
+    Increased connection delay to account for slower HRMs
+	Sept 2020
 """
 
 __version__ = "0.1.1"
@@ -28,6 +33,11 @@ logging.basicConfig(format="%(asctime)-15s  %(message)s")
 log = logging.getLogger("BLEHeartRateLogger")
 
 
+
+
+
+
+
 def parse_args():
     """
     Command line argument parsing
@@ -41,6 +51,7 @@ def parse_args():
     parser.add_argument("-v", action='store_true', help="Verbose output")
     parser.add_argument("-d", action='store_true', help="Enable debug of gatttool")
     parser.add_argument("-csv", metavar='file.csv', type=str, help="Output filename of the csv file (default: none)")
+    parser.add_argument("-rpi", action='store_true', help="Use Raspberry Pi GPIO to respond to button presses and display heart rate on LCD")
 
     confpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "BLEHeartRateLogger.conf")
     if os.path.exists(confpath):
@@ -168,10 +179,11 @@ def get_ble_hr_mac():
 
     # We wait for the 'hcitool lescan' to finish
     time.sleep(1)
-    return addr
+    return addr.decode("utf-8")
 
 
-def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_handle=None, debug_gatttool=False, csv=None):
+
+def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_handle=None, debug_gatttool=False, csv=None, rpi=False):
     """
     main routine to which orchestrates everything
     """
@@ -191,6 +203,38 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
         except:
             log.error("Could not open csv file. Please verify access to the file path: " + csv)
 
+    #Raspberry Pi setup
+    if rpi:
+        try:
+            import RPi.GPIO as GPIO
+            import Adafruit_SSD1306
+            from PIL import Image
+            from PIL import ImageDraw
+            from PIL import ImageFont
+            RST = None
+            disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST, i2c_address=0x3C)
+            disp.begin()
+            disp.clear()
+            disp.display()
+            width = disp.width
+            height = disp.height
+            image = Image.new('1', (width, height))
+            draw = ImageDraw.Draw(image)
+            #font = ImageFont.load_default()
+            font = ImageFont.truetype('m12.TTF', 32)
+            x = 0
+            top = 16
+            GPIO.setmode(GPIO.BCM)
+            button_pin = 23
+            GPIO.setup(button_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            draw.rectangle((0,0,width,height), outline=0, fill=0)
+            ImportedRPI = True
+        except:
+            log.warning("Can't set up RPi buttons and LCD")
+            ImportedRPI = False
+    else:
+        ImportedRPI = False
+
     if addr is None:
         # In case no address has been provided, we scan to find any BLE devices
         addr = get_ble_hr_mac()
@@ -203,8 +247,8 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
     while retry:
 
         while 1:
-            log.info("Establishing connection to " + addr.decode("utf-8"))
-            gt = pexpect.spawn(gatttool + " -b " + addr.decode("utf-8") + " -t random --interactive")
+            log.info("Establishing connection to " + addr)
+            gt = pexpect.spawn(gatttool + " -b " + addr + " -t random --interactive")
             if debug_gatttool:
                 gt.logfile = sys.stdout
 
@@ -229,7 +273,7 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
         if not retry:
             break
 
-        log.info("Connected to " + addr.decode("utf-8"))
+        log.info("Connected to " + addr)
 
         if check_battery:
             gt.sendline("char-read-uuid 00002a19-0000-1000-8000-00805f9b34fb")
@@ -281,9 +325,14 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
             except pexpect.TIMEOUT:
                 # If the timer expires, it means that we have lost the
                 # connection with the HR monitor
-                log.warn("Connection lost with " + addr.decode("utf-8") + ". Reconnecting.")
+                log.warning("Connection lost with " + addr + ". Reconnecting.")
                 if sqlfile is not None:
                     sq.commit()
+                if ImportedRPI == True:
+                    draw.rectangle((0,0,width,height), outline=0, fill=0)
+                    draw.text((x, top), "LC", font=font, fill=255)
+                    disp.image(image)
+                    disp.display()
                 gt.sendline("quit")
                 try:
                     gt.wait()
@@ -323,6 +372,18 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
                         # Write to the csv file
                         csv_file.write(time.strftime("%D %T", time.localtime()) + "," + str(res["hr"]) + "\n")
 
+            if ImportedRPI == True:
+                draw.rectangle((0,0,width,height), outline=0, fill=0)
+                draw.text((x, top), str(res["hr"]), font=font, fill=255)
+                disp.image(image)
+                disp.display()
+                if GPIO.input(button_pin) == False:
+                    time.sleep(1)
+                    if GPIO.input(button_pin) == False:
+                        log.info("Stop-button pressed. Quitting cleanly.")
+                        retry = False
+                        break
+
     if sqlfile is not None:
         # We close the database properly
         sq.commit()
@@ -334,13 +395,50 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
                 # Close the csv file
                 csv_file.close()
 
+
+
     # We quit close the BLE connection properly
     gt.sendline("quit")
     try:
         gt.wait()
     except:
         pass
+    
+    if ImportedRPI == True:
+        if GPIO.input(button_pin) == False:
+            draw.rectangle((0,0,width,height), outline=0, fill=0)
+            draw.text((x, top), "PO", font=font, fill=255)
+            disp.image(image)
+            disp.display()
+            time.sleep(2)
+            if GPIO.input(button_pin) == False:
+                draw.rectangle((0,0,width,height), outline=0, fill=0)
+                draw.text((x, top), "OFF", font=font, fill=255)
+                disp.image(image)
+                disp.display()
+                time.sleep(1)
+                disp.clear()
+                disp.display()
+                GPIO.cleanup()
+                import os
+                os.system('sudo poweroff')
+            else:
+                draw.rectangle((0,0,width,height), outline=0, fill=0)
+                draw.text((x, top), "ON", font=font, fill=255)
+                disp.image(image)
+                disp.display()
+        else:
+            draw.rectangle((0,0,width,height), outline=0, fill=0)
+            draw.text((x, top), "ON", font=font, fill=255)
+            disp.image(image)
+            disp.display()
+        
+        time.sleep(0.5)
+        disp.clear()
+        disp.display()
+        GPIO.cleanup()
 
+        
 
 def cli():
     """
@@ -358,7 +456,7 @@ def cli():
     else:
         log.setLevel(logging.INFO)
 
-    main(args.m, args.o, args.g, args.b, args.H, args.d, args.csv)
+    main(args.m, args.o, args.g, args.b, args.H, args.d, args.csv, args.rpi)
 
 
 if __name__ == "__main__":
