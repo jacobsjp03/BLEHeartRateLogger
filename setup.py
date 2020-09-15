@@ -11,7 +11,7 @@ with open(path.join(here, 'README.md'), encoding = 'utf-8') as f:
 
 setup(
     name = 'BLEHeartRateLogger',
-    version = '0.1.0',
+    version = '0.1.2',
     description = 'A tool to log your heart rate using a Bluetooth low-energy (BLE) heart rate monitor (HRM).',
     long_description = long_description,
     url = 'https://github.com/fg1/BLEHeartRateLogger',
