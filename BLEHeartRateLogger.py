@@ -12,10 +12,10 @@
     :copyright: (c) 2015 by fg1
     :license: BSD, see LICENSE for more details
 
+    Sept 2020
     Added CSV output
     Added LCD output
     Increased connection delay to account for slower HRMs
-	Sept 2020
 """
 
 __version__ = "0.1.2"
