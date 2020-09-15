@@ -36,7 +36,7 @@ To quit the tool, simply Ctrl-C.
 
 Command line options:
 ```
-usage: BLEHeartRateLogger.py [-h] [-m MAC] [-b] [-g PATH] [-o FILE] [-v]
+usage: BLEHeartRateLogger.py [-h] [-m MAC] [-b] [-g PATH] [-o FILE] [-v] [-d] [-csv FILE] [-rpi]
 
 Bluetooth heart rate monitor data logger
 
