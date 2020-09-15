@@ -17,4 +17,4 @@ Increased timeout delay for the Wahoo Tickr X.
 Version 0.1.2
 -------------
 
-Added output for an LCD and input from a push-button. Tested on a Raspberry Pi 3.
+Added output for an SSD1306 128x64 OLED screen and input from a push-button. Tested on a Raspberry Pi 3.
