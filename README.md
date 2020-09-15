@@ -48,7 +48,7 @@ optional arguments:
   -o FILE     Output filename of the database (default: none)
   -v          Verbose output
   -d          Enable debug of gatttool
-  -csv        Output filename of the csv file (default: none)
+  -csv FILE   Output filename of the csv file (default: none)
   -rpi        Use Raspberry Pi GPIO to respond to button presses and display heart rate on LCD
 ```
 
